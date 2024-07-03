@@ -1,56 +1,57 @@
+if (!require("shiny")) install.packages("shiny")
+if (!require("DT")) install.packages("DT")
+
 library(shiny)
-library(mongolite)
+library(DT)
 
-# Fonction pour se connecter à MongoDB et récupérer les collections
-get_collections <- function() {
-  # URL de connexion
-  url <- "mongodb+srv://project:KcuXIlF8eZkIjtgC@cluster0.yyhqpxq.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
-  
-  # Connexion à MongoDB
-  client <- tryCatch({
-    mongo(url = url, db = "plane_db")
-  }, error = function(e) {
-    stop("Échec de la connexion à MongoDB : ", e$message)
-  })
-  
-  # Récupérer les noms des collections
-  collections <- tryCatch({
-    client$run('{"listCollections": 1}')
-  }, error = function(e) {
-    stop("Échec de la récupération des collections : ", e$message)
-  })
-  
-  client$disconnect()
-  
-  return(collections)
-}
+# Source le fichier de connexion MongoDB
+source("mongodb_connection.R")
 
-# Interface utilisateur
+collections <- c("airports", "flights", "planes", "weather")
+
+# UI de l'application Shiny
 ui <- fluidPage(
-  titlePanel("Affichage des Collections MongoDB"),
+  titlePanel("Données du trafic aérien"),
   sidebarLayout(
     sidebarPanel(
-      h2("Collections MongoDB"),
-      p("Cette application affiche les collections de la base de données MongoDB.")
+      selectInput("collection", "Choisissez une collection :",
+                  choices = collections),
+      actionButton("refresh", "Rafraîchir les données")
     ),
     mainPanel(
-      h2("Liste des Collections"),
-      tableOutput("collectionsTable")
+      DTOutput("table")
     )
   )
 )
 
-# Serveur
+# Serveur de l'application Shiny
 server <- function(input, output) {
-  output$collectionsTable <- renderTable({
-    tryCatch({
-      collections <- get_collections()
-      data.frame(Collection = collections)
-    }, error = function(e) {
-      data.frame(Collection = paste("Erreur : ", e$message))
-    })
+
+  # Fonction pour charger les données en fonction de la collection choisie
+  load_data <- reactive({
+    if(input$collection == "airports") {
+      data <- get_collection("airports")
+    } else if(input$collection == "flights") {
+      data <- get_collection("flights")
+    } else if(input$collection == "planes") {
+      data <- get_collection("planes")
+    } else if(input$collection == "weather") {
+      data <- get_collection("weather")
+    }
+    print(paste("Chargement de la collection :", input$collection)) # Debugging
+    print(head(data)) # Debugging
+    if (nrow(data) == 0) {
+      showNotification("Aucune donnée trouvée dans la collection sélectionnée.",
+                       type = "warning")
+    }
+    data
+  })
+
+  # Affichez les données dans un tableau
+  output$table <- renderDT({
+    input$refresh  # Actualise les données lorsqu'on clique sur le bouton
+    datatable(load_data(), options = list(pageLength = 10))
   })
 }
 
-# Lancer l'application
 shinyApp(ui = ui, server = server)

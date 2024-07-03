@@ -41,10 +41,3 @@ get_collection <- function(collection_name) {
 
   return(data)
 }
-
-# Récupérer des données
-data_airports <- get_collection("airports")
-
-# Afficher les données
-print("Données de la collection airports :")
-print(head(data_airports))

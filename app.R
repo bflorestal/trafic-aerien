@@ -133,10 +133,10 @@ server <- function(input, output, session) {
 
     } else if (input$graph_collection == "weather") {
       data <- get_collection("weather")
-      ggplot(data, aes(x = time_hour, y = temp)) +
+      ggplot(data, aes(x = wind_speed, y = temp)) +
         geom_line(color = "blue") +
-        labs(title = "Température au fil du temps",
-             x = "Temps",
+        labs(title = "Vitesse du vent au fil du temps",
+             x = "Vitesse",
              y = "Température (F)")
     }
   })
@@ -146,7 +146,10 @@ server <- function(input, output, session) {
     data_airports <- get_collection("airports")
     leaflet(data_airports) %>%
       addTiles() %>%
-      addMarkers(~lon, ~lat, popup = ~name)
+      addMarkers(~lon,
+                 ~lat,
+                 popup = ~name,
+                 clusterOptions = markerClusterOptions())
   })
 }
 

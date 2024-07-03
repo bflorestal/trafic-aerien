@@ -1,56 +1,156 @@
+if (!require("shiny")) install.packages("shiny")
+if (!require("DT")) install.packages("DT")
+if (!require("bslib")) install.packages("bslib")
+if (!require("ggplot2")) install.packages("ggplot2")
+if (!require("leaflet")) install.packages("leaflet")
+
 library(shiny)
-library(mongolite)
+library(DT)
+library(bslib)
+library(ggplot2)
+library(leaflet)
 
-# Fonction pour se connecter à MongoDB et récupérer les collections
-get_collections <- function() {
-  # URL de connexion
-  url <- "mongodb+srv://project:KcuXIlF8eZkIjtgC@cluster0.yyhqpxq.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
-  
-  # Connexion à MongoDB
-  client <- tryCatch({
-    mongo(url = url, db = "plane_db")
-  }, error = function(e) {
-    stop("Échec de la connexion à MongoDB : ", e$message)
-  })
-  
-  # Récupérer les noms des collections
-  collections <- tryCatch({
-    client$run('{"listCollections": 1}')
-  }, error = function(e) {
-    stop("Échec de la récupération des collections : ", e$message)
-  })
-  
-  client$disconnect()
-  
-  return(collections)
-}
+# Source le fichier de connexion MongoDB
+source("mongodb_connection.R")
 
-# Interface utilisateur
-ui <- fluidPage(
-  titlePanel("Affichage des Collections MongoDB"),
-  sidebarLayout(
-    sidebarPanel(
-      h2("Collections MongoDB"),
-      p("Cette application affiche les collections de la base de données MongoDB.")
-    ),
-    mainPanel(
-      h2("Liste des Collections"),
-      tableOutput("collectionsTable")
+collections <- c("airports", "flights", "planes", "weather")
+
+# UI de l'application Shiny avec bslib
+ui <- page_navbar(
+  title = "Données du trafic aérien",
+  theme = bs_theme(bootswatch = "flatly"),
+
+  # Page Tableaux
+  nav_panel(
+    title = "Tableaux",
+    fluidPage(
+      titlePanel("Données des collections"),
+      sidebarLayout(
+        sidebarPanel(
+          selectInput("collection", "Choisissez une collection :",
+                      choices = collections),
+          actionButton("refresh", "Rafraîchir les données")
+        ),
+        mainPanel(
+          DTOutput("table")
+        )
+      )
+    )
+  ),
+
+  # Page Graphiques
+  nav_panel(
+    title = "Graphiques",
+    fluidPage(
+      titlePanel("Graphiques des collections"),
+      sidebarLayout(
+        sidebarPanel(
+          selectInput("graph_collection", "Choisissez une collection :",
+                      choices = collections),
+          actionButton("plot", "Afficher le graphique")
+        ),
+        mainPanel(
+          plotOutput("plot")
+        )
+      )
+    )
+  ),
+
+  # Page Carte des Aéroports
+  nav_panel(
+    title = "Carte",
+    fluidPage(
+      titlePanel("Carte des aéroports"),
+      sidebarLayout(
+        sidebarPanel(
+          actionButton("show_map", "Afficher la carte")
+        ),
+        mainPanel(
+          leafletOutput("map", height = "600px")
+        )
+      )
     )
   )
 )
 
-# Serveur
-server <- function(input, output) {
-  output$collectionsTable <- renderTable({
-    tryCatch({
-      collections <- get_collections()
-      data.frame(Collection = collections)
-    }, error = function(e) {
-      data.frame(Collection = paste("Erreur : ", e$message))
-    })
+server <- function(input, output, session) {
+
+  # Fonction pour charger les données en fonction de la collection choisie
+  load_data <- reactive({
+    if(input$collection == "airports") {
+      data <- get_collection("airports")
+    } else if(input$collection == "flights") {
+      data <- get_collection("flights")
+    } else if(input$collection == "planes") {
+      data <- get_collection("planes")
+    } else if(input$collection == "weather") {
+      data <- get_collection("weather")
+    }
+    print(paste("Chargement de la collection :", input$collection)) # Debugging
+    if (nrow(data) == 0) {
+      showNotification("Aucune donnée trouvée dans la collection sélectionnée.",
+                       type = "warning")
+    }
+    data
+  })
+
+  # Affichage des données dans un tableau
+  output$table <- renderDT({
+    input$refresh  # Actualise les données lorsqu'on clique sur le bouton
+    datatable(load_data(), options = list(pageLength = 10))
+  })
+
+  # Graphiques en fonction de la collection choisie
+  output$plot <- renderPlot({
+    input$plot  # Actualise le graphique lorsqu'on clique sur le bouton
+    data <- NULL
+
+    if (input$graph_collection == "airports") {
+      data <- get_collection("airports")
+      ggplot(data, aes(x = reorder(name, -lat), y = lat)) +
+        geom_bar(stat = "identity") +
+        labs(title = "Nombre de vols par aéroport",
+             x = "Aéroport",
+             y = "Latitude") +
+        theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+    } else if (input$graph_collection == "flights") {
+      data <- get_collection("flights")
+      ggplot(data, aes(x = dep_delay)) +
+        geom_histogram(binwidth = 5, fill = "blue", color = "black") +
+        labs(title = "Histogramme des retards au départ",
+             x = "Retard au départ (minutes)",
+             y = "Nombre de vols")
+
+    } else if (input$graph_collection == "planes") {
+      data <- get_collection("planes")
+      ggplot(data, aes(x = manufacturer)) +
+        geom_bar(fill = "blue") +
+        labs(title = "Nombre d'avions par fabricant",
+             x = "Fabricant",
+             y = "Nombre d'avions") +
+        theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+    } else if (input$graph_collection == "weather") {
+      data <- get_collection("weather")
+      ggplot(data, aes(x = wind_speed, y = temp)) +
+        geom_line(color = "blue") +
+        labs(title = "Vitesse du vent au fil du temps",
+             x = "Vitesse",
+             y = "Température (F)")
+    }
+  })
+
+  # Carte avec les aéroports
+  output$map <- renderLeaflet({
+    data_airports <- get_collection("airports")
+    leaflet(data_airports) %>%
+      addTiles() %>%
+      addMarkers(~lon,
+                 ~lat,
+                 popup = ~name,
+                 clusterOptions = markerClusterOptions())
   })
 }
 
-# Lancer l'application
 shinyApp(ui = ui, server = server)

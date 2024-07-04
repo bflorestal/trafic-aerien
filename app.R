@@ -1,10 +1,6 @@
-if (!require("shiny")) install.packages("shiny")
-if (!require("DT")) install.packages("DT")
-if (!require("bslib")) install.packages("bslib")
-if (!require("ggplot2")) install.packages("ggplot2")
-if (!require("leaflet")) install.packages("leaflet")
-if (!require("dplyr")) install.packages("dplyr")
+# app.R
 
+# Charger les packages
 library(shiny)
 library(DT)
 library(bslib)
@@ -75,6 +71,31 @@ ui <- page_navbar(
         ),
         mainPanel(
           leafletOutput("map", height = "600px")
+        )
+      )
+    )
+  ),
+
+  # Page Analyses
+  nav_panel(
+    title = "Analyses",
+    fluidPage(
+      titlePanel("Analyses spécifiques"),
+      sidebarLayout(
+        sidebarPanel(
+          selectInput("analysis", "Choisissez une analyse :",
+                      choices = c(
+                        "Aéroport de départ le plus emprunté",
+                        "10 destinations les plus prisées",
+                        "10 destinations les moins prisées",
+                        "10 avions qui ont le plus décollé",
+                        "10 avions qui ont le moins décollé"
+                      )),
+          actionButton("run_analysis", "Afficher l'analyse")
+        ),
+        mainPanel(
+          plotOutput("analysis_plot"),
+          DTOutput("analysis_table")
         )
       )
     )
@@ -166,6 +187,125 @@ server <- function(input, output, session) {
                  ~lat,
                  popup = ~name,
                  clusterOptions = markerClusterOptions())
+  })
+
+  # Analyses spécifiques
+  output$analysis_plot <- renderPlot({
+    input$run_analysis
+    isolate({
+      if (input$analysis == "Aéroport de départ le plus emprunté") {
+        data <- get_collection("flights")
+        top_airport <- data %>%
+          group_by(origin) %>%
+          summarise(count = n()) %>%
+          arrange(desc(count)) %>%
+          slice(1)
+        ggplot(top_airport, aes(x = origin, y = count)) +
+          geom_bar(stat = "identity", fill = "blue") +
+          labs(title = "Aéroport de départ le plus emprunté",
+               x = "Aéroport",
+               y = "Nombre de vols")
+      } else if (input$analysis == "10 destinations les plus prisées") {
+        data <- get_collection("flights")
+        top_destinations <- data %>%
+          group_by(dest) %>%
+          summarise(count = n()) %>%
+          arrange(desc(count)) %>%
+          slice(1:10)
+        ggplot(top_destinations, aes(x = reorder(dest, -count), y = count)) +
+          geom_bar(stat = "identity", fill = "blue") +
+          labs(title = "10 destinations les plus prisées",
+               x = "Destination",
+               y = "Nombre de vols") +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1))
+      } else if (input$analysis == "10 destinations les moins prisées") {
+        data <- get_collection("flights")
+        bottom_destinations <- data %>%
+          group_by(dest) %>%
+          summarise(count = n()) %>%
+          arrange(count) %>%
+          slice(1:10)
+        ggplot(bottom_destinations, aes(x = reorder(dest, count), y = count)) +
+          geom_bar(stat = "identity", fill = "blue") +
+          labs(title = "10 destinations les moins prisées",
+               x = "Destination",
+               y = "Nombre de vols") +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1))
+      } else if (input$analysis == "10 avions qui ont le plus décollé") {
+        data <- get_collection("flights")
+        top_planes <- data %>%
+          group_by(tailnum) %>%
+          summarise(count = n()) %>%
+          arrange(desc(count)) %>%
+          slice(1:10)
+        ggplot(top_planes, aes(x = reorder(tailnum, -count), y = count)) +
+          geom_bar(stat = "identity", fill = "blue") +
+          labs(title = "10 avions qui ont le plus décollé",
+               x = "Numéro de queue",
+               y = "Nombre de décollages") +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1))
+      } else if (input$analysis == "10 avions qui ont le moins décollé") {
+        data <- get_collection("flights")
+        bottom_planes <- data %>%
+          group_by(tailnum) %>%
+          summarise(count = n()) %>%
+          arrange(count) %>%
+          slice(1:10)
+        ggplot(bottom_planes, aes(x = reorder(tailnum, count), y = count)) +
+          geom_bar(stat = "identity", fill = "blue") +
+          labs(title = "10 avions qui ont le moins décollé",
+               x = "Numéro de queue",
+               y = "Nombre de décollages") +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1))
+      }
+    })
+  })
+
+  output$analysis_table <- renderDT({
+    input$run_analysis
+    isolate({
+      if (input$analysis == "Aéroport de départ le plus emprunté") {
+        data <- get_collection("flights")
+        top_airport <- data %>%
+          group_by(origin) %>%
+          summarise(count = n()) %>%
+          arrange(desc(count)) %>%
+          slice(1)
+        datatable(top_airport, options = list(pageLength = 10))
+      } else if (input$analysis == "10 destinations les plus prisées") {
+        data <- get_collection("flights")
+        top_destinations <- data %>%
+          group_by(dest) %>%
+          summarise(count = n()) %>%
+          arrange(desc(count)) %>%
+          slice(1:10)
+        datatable(top_destinations, options = list(pageLength = 10))
+      } else if (input$analysis == "10 destinations les moins prisées") {
+        data <- get_collection("flights")
+        bottom_destinations <- data %>%
+          group_by(dest) %>%
+          summarise(count = n()) %>%
+          arrange(count) %>%
+          slice(1:10)
+        datatable(bottom_destinations, options = list(pageLength = 10))
+      } else if (input$analysis == "10 avions qui ont le plus décollé") {
+        data <- get_collection("flights")
+        top_planes <- data %>%
+          group_by(tailnum) %>%
+          summarise(count = n()) %>%
+          arrange(desc(count)) %>%
+          slice(1:10)
+        datatable(top_planes, options = list(pageLength = 10))
+      } else if (input$analysis == "10 avions qui ont le moins décollé") {
+        data <- get_collection("flights")
+        bottom_planes <- data %>%
+          group_by(tailnum) %>%
+          summarise(count = n()) %>%
+          arrange(count) %>%
+          slice(1:10)
+        datatable(bottom_planes, options = list(pageLength = 10))
+      }
+    })
   })
 }
 

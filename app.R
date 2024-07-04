@@ -3,12 +3,14 @@ if (!require("DT")) install.packages("DT")
 if (!require("bslib")) install.packages("bslib")
 if (!require("ggplot2")) install.packages("ggplot2")
 if (!require("leaflet")) install.packages("leaflet")
+if (!require("dplyr")) install.packages("dplyr")
 
 library(shiny)
 library(DT)
 library(bslib)
 library(ggplot2)
 library(leaflet)
+library(dplyr)
 
 # Source le fichier de connexion MongoDB
 source("mongodb_connection.R")
@@ -29,6 +31,12 @@ ui <- page_navbar(
         sidebarPanel(
           selectInput("collection", "Choisissez une collection :",
                       choices = collections),
+          conditionalPanel(
+            condition = "input.collection == 'airports'",
+            selectInput("dst_filter", "Filtrer par DST :",
+                        choices = c("All", "A", "U", "N"),
+                        selected = "All")
+          ),
           actionButton("refresh", "Rafraîchir les données")
         ),
         mainPanel(
@@ -79,6 +87,9 @@ server <- function(input, output, session) {
   load_data <- reactive({
     if(input$collection == "airports") {
       data <- get_collection("airports")
+      if (input$dst_filter != "All") {
+        data <- data[data$dst == input$dst_filter, ]
+      }
     } else if(input$collection == "flights") {
       data <- get_collection("flights")
     } else if(input$collection == "planes") {
@@ -107,11 +118,16 @@ server <- function(input, output, session) {
 
     if (input$graph_collection == "airports") {
       data <- get_collection("airports")
-      ggplot(data, aes(x = reorder(name, -lat), y = lat)) +
-        geom_bar(stat = "identity") +
-        labs(title = "Nombre de vols par aéroport",
-             x = "Aéroport",
-             y = "Latitude") +
+      airport_counts <- data %>% 
+        dplyr::group_by(tzone) %>% 
+        dplyr::summarise(count = n()) %>% 
+        dplyr::arrange(desc(count))
+
+      ggplot(airport_counts, aes(x = reorder(tzone, -count), y = count)) +
+        geom_bar(stat = "identity", fill = "blue") +
+        labs(title = "Nombre d'aéroports par fuseau horaire",
+             x = "Fuseau horaire",
+             y = "Nombre d'aéroports") +
         theme(axis.text.x = element_text(angle = 90, hjust = 1))
 
     } else if (input$graph_collection == "flights") {
